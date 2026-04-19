@@ -1,6 +1,7 @@
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, Text, DateTime, Integer, ForeignKey, Enum as SAEnum
+    Column, String, Text, DateTime, Integer, ForeignKey,
+    UniqueConstraint, Enum as SAEnum
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -21,17 +22,69 @@ class Base(DeclarativeBase):
     pass
 
 
+class AuthAccount(Base):
+    __tablename__ = "auth_accounts"
+
+    id: str = Column(String, primary_key=True, default=_uuid)
+    email: str = Column(String, unique=True, nullable=False, index=True)
+    username: str = Column(String, unique=True, nullable=False, index=True)
+    hashed_password: str = Column(String, nullable=False)
+    created_at: datetime = Column(DateTime, default=datetime.utcnow)
+
+    owned_rooms = relationship("Room", back_populates="creator", foreign_keys="[Room.created_by]")
+    memberships = relationship("RoomMembership", back_populates="account", cascade="all, delete-orphan")
+    invites_created = relationship("RoomInvite", back_populates="creator")
+
+
 class Room(Base):
     __tablename__ = "rooms"
 
     id: str = Column(String, primary_key=True, default=_uuid)
     name: str = Column(String, nullable=False)
+    created_by: str | None = Column(String, ForeignKey("auth_accounts.id"), nullable=True)
     created_at: datetime = Column(DateTime, default=datetime.utcnow)
 
+    creator = relationship("AuthAccount", back_populates="owned_rooms", foreign_keys=[created_by])
     users = relationship("User", back_populates="room", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="room", cascade="all, delete-orphan")
     branches = relationship("Branch", back_populates="room", cascade="all, delete-orphan")
     queue_items = relationship("QueueItem", back_populates="room", cascade="all, delete-orphan")
+    memberships = relationship("RoomMembership", back_populates="room", cascade="all, delete-orphan")
+    invites = relationship("RoomInvite", back_populates="room", cascade="all, delete-orphan")
+
+
+class RoomMembership(Base):
+    __tablename__ = "room_memberships"
+
+    id: str = Column(String, primary_key=True, default=_uuid)
+    room_id: str = Column(String, ForeignKey("rooms.id"), nullable=False)
+    account_id: str = Column(String, ForeignKey("auth_accounts.id"), nullable=False)
+    role: str = Column(
+        SAEnum("owner", "member", name="membership_role"),
+        default="member", nullable=False,
+    )
+    joined_at: datetime = Column(DateTime, default=datetime.utcnow)
+
+    room = relationship("Room", back_populates="memberships")
+    account = relationship("AuthAccount", back_populates="memberships")
+
+    __table_args__ = (
+        UniqueConstraint("room_id", "account_id", name="uq_room_account"),
+    )
+
+
+class RoomInvite(Base):
+    __tablename__ = "room_invites"
+
+    id: str = Column(String, primary_key=True, default=_uuid)
+    room_id: str = Column(String, ForeignKey("rooms.id"), nullable=False)
+    created_by: str = Column(String, ForeignKey("auth_accounts.id"), nullable=False)
+    token: str = Column(String, unique=True, nullable=False, index=True)
+    expires_at: datetime = Column(DateTime, nullable=False)
+    created_at: datetime = Column(DateTime, default=datetime.utcnow)
+
+    room = relationship("Room", back_populates="invites")
+    creator = relationship("AuthAccount", back_populates="invites_created")
 
 
 class User(Base):
@@ -40,6 +93,7 @@ class User(Base):
     id: str = Column(String, primary_key=True, default=_uuid)
     display_name: str = Column(String, nullable=False)
     room_id: str = Column(String, ForeignKey("rooms.id"), nullable=False)
+    account_id: str | None = Column(String, ForeignKey("auth_accounts.id"), nullable=True)
     connected_at: datetime = Column(DateTime, default=datetime.utcnow)
 
     room = relationship("Room", back_populates="users")
@@ -74,8 +128,7 @@ class Branch(Base):
     created_by: str = Column(String, ForeignKey("users.id"), nullable=False)
     status: str = Column(
         SAEnum("active", "merged", "discarded", name="branch_status"),
-        default="active",
-        nullable=False,
+        default="active", nullable=False,
     )
     created_at: datetime = Column(DateTime, default=datetime.utcnow)
 
@@ -92,8 +145,7 @@ class QueueItem(Base):
     content: str = Column(Text, nullable=False)
     status: str = Column(
         SAEnum("pending", "approved", "discarded", "edited", name="queue_status"),
-        default="pending",
-        nullable=False,
+        default="pending", nullable=False,
     )
     created_at: datetime = Column(DateTime, default=datetime.utcnow)
 
@@ -115,7 +167,6 @@ class Document(Base):
 
 
 async def init_db() -> None:
-    """Create all tables if they don't exist."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

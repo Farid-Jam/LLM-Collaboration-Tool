@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     chromadb_port: int = 8002
     model_name: str = "Qwen/Qwen2.5-7B-Instruct"
     hf_token: str = ""
+    secret_key: str = "change-me-in-production"
+    frontend_url: str = "http://localhost:5173"
 
     class Config:
         env_file = ".env"

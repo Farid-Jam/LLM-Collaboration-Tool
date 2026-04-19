@@ -1,18 +1,30 @@
 import asyncio
 import io
+import secrets
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import socketio
-from fastapi import FastAPI, File, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.auth import (
+    create_access_token, get_current_account, get_current_account_from_token,
+    hash_password, verify_password,
+)
 from core.config import settings
 from core.events import USER_JOIN, USER_JOINED, USER_LEFT, MESSAGE_SEND, LLM_STATUS
-from models.database import AsyncSessionLocal, Room, User, Message, QueueItem, Document, Branch, init_db
+from models.database import (
+    AsyncSessionLocal, AuthAccount, Room, RoomMembership, RoomInvite,
+    User, Message, QueueItem, Document, Branch, get_session, init_db,
+)
 from models.schemas import (
+    AccountOut, LoginRequest, LoginResponse, RegisterRequest,
+    RoomCreateRequest, RoomWithMemberCount,
+    InviteCreateResponse, InvitePreviewResponse, InviteAcceptResponse,
     MessageOut, QueueItemOut, DocumentOut, BranchOut,
     UserJoinPayload, MessageSendPayload, QueueActionPayload,
     BranchCreatePayload, BranchMergePayload,
@@ -45,6 +57,9 @@ _sessions: dict[str, dict] = {}
 # room_id → {branch_id, summary} awaiting group merge approval
 _pending_merges: dict[str, dict] = {}
 
+# sid → account_id (populated on WebSocket connect, cleared on disconnect)
+_auth_cache: dict[str, str] = {}
+
 
 @app.on_event("startup")
 async def on_startup() -> None:
@@ -57,15 +72,266 @@ async def health() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Auth endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/auth/register", response_model=AccountOut, status_code=201)
+async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_session)) -> dict:
+    existing = await db.execute(
+        select(AuthAccount).where(
+            (AuthAccount.email == payload.email) | (AuthAccount.username == payload.username)
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Email or username already taken")
+
+    account = AuthAccount(
+        id=str(uuid.uuid4()),
+        email=payload.email,
+        username=payload.username,
+        hashed_password=hash_password(payload.password),
+        created_at=datetime.utcnow(),
+    )
+    db.add(account)
+    await db.commit()
+    return AccountOut.model_validate(account).model_dump(mode="json")
+
+
+@app.post("/auth/login", response_model=LoginResponse)
+async def login(payload: LoginRequest, db: AsyncSession = Depends(get_session)) -> dict:
+    result = await db.execute(select(AuthAccount).where(AuthAccount.email == payload.email))
+    account = result.scalar_one_or_none()
+    if not account or not verify_password(payload.password, account.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = create_access_token(account.id)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": AccountOut.model_validate(account).model_dump(mode="json"),
+    }
+
+
+@app.get("/auth/me", response_model=AccountOut)
+async def me(account: AuthAccount = Depends(get_current_account)) -> dict:
+    return AccountOut.model_validate(account).model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
+# Room endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/rooms", response_model=RoomWithMemberCount, status_code=201)
+async def create_room(
+    payload: RoomCreateRequest,
+    account: AuthAccount = Depends(get_current_account),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    room = Room(
+        id=str(uuid.uuid4()),
+        name=payload.name,
+        created_by=account.id,
+        created_at=datetime.utcnow(),
+    )
+    db.add(room)
+    membership = RoomMembership(
+        id=str(uuid.uuid4()),
+        room_id=room.id,
+        account_id=account.id,
+        role="owner",
+        joined_at=datetime.utcnow(),
+    )
+    db.add(membership)
+    await db.commit()
+    return {"id": room.id, "name": room.name, "created_by": room.created_by, "created_at": room.created_at, "member_count": 1}
+
+
+@app.get("/rooms", response_model=list[RoomWithMemberCount])
+async def list_rooms(
+    account: AuthAccount = Depends(get_current_account),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    result = await db.execute(
+        select(Room, func.count(RoomMembership.id).label("member_count"))
+        .join(RoomMembership, Room.id == RoomMembership.room_id)
+        .where(RoomMembership.account_id == account.id)
+        .group_by(Room.id)
+        .order_by(Room.created_at.desc())
+    )
+    return [
+        {"id": r.id, "name": r.name, "created_by": r.created_by, "created_at": r.created_at, "member_count": count}
+        for r, count in result.all()
+    ]
+
+
+@app.get("/rooms/{room_id}", response_model=RoomWithMemberCount)
+async def get_room(
+    room_id: str,
+    account: AuthAccount = Depends(get_current_account),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    membership = await db.execute(
+        select(RoomMembership).where(
+            RoomMembership.room_id == room_id,
+            RoomMembership.account_id == account.id,
+        )
+    )
+    if not membership.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    result = await db.execute(
+        select(Room, func.count(RoomMembership.id).label("member_count"))
+        .join(RoomMembership, Room.id == RoomMembership.room_id)
+        .where(Room.id == room_id)
+        .group_by(Room.id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Room not found")
+    room, count = row
+    return {"id": room.id, "name": room.name, "created_by": room.created_by, "created_at": room.created_at, "member_count": count}
+
+
+@app.delete("/rooms/{room_id}", status_code=204)
+async def delete_room(
+    room_id: str,
+    account: AuthAccount = Depends(get_current_account),
+    db: AsyncSession = Depends(get_session),
+) -> None:
+    membership = (await db.execute(
+        select(RoomMembership).where(
+            RoomMembership.room_id == room_id,
+            RoomMembership.account_id == account.id,
+            RoomMembership.role == "owner",
+        )
+    )).scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=403, detail="Only the room owner can delete this room")
+    room = await db.get(Room, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    await db.delete(room)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Invite endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/rooms/{room_id}/invites", response_model=InviteCreateResponse, status_code=201)
+async def create_invite(
+    room_id: str,
+    account: AuthAccount = Depends(get_current_account),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    membership = await db.execute(
+        select(RoomMembership).where(
+            RoomMembership.room_id == room_id,
+            RoomMembership.account_id == account.id,
+            RoomMembership.role == "owner",
+        )
+    )
+    if not membership.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Only room owners can create invite links")
+
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    invite = RoomInvite(
+        id=str(uuid.uuid4()),
+        room_id=room_id,
+        created_by=account.id,
+        token=token,
+        expires_at=expires_at,
+        created_at=datetime.utcnow(),
+    )
+    db.add(invite)
+    await db.commit()
+
+    invite_url = f"{settings.frontend_url}/invite/{token}"
+    return {"token": token, "invite_url": invite_url, "expires_at": expires_at}
+
+
+@app.get("/invites/{token}", response_model=InvitePreviewResponse)
+async def preview_invite(token: str, db: AsyncSession = Depends(get_session)) -> dict:
+    result = await db.execute(
+        select(RoomInvite).where(RoomInvite.token == token)
+    )
+    invite = result.scalar_one_or_none()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+
+    room = await db.get(Room, invite.room_id)
+    return {
+        "room_id": invite.room_id,
+        "room_name": room.name if room else invite.room_id,
+        "expires_at": invite.expires_at,
+        "is_expired": invite.expires_at < datetime.utcnow(),
+    }
+
+
+@app.post("/invites/{token}/accept", response_model=InviteAcceptResponse)
+async def accept_invite(
+    token: str,
+    account: AuthAccount = Depends(get_current_account),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    result = await db.execute(
+        select(RoomInvite).where(RoomInvite.token == token)
+    )
+    invite = result.scalar_one_or_none()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if invite.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410, detail="Invite has expired")
+
+    # Upsert membership — idempotent
+    existing = await db.execute(
+        select(RoomMembership).where(
+            RoomMembership.room_id == invite.room_id,
+            RoomMembership.account_id == account.id,
+        )
+    )
+    if not existing.scalar_one_or_none():
+        db.add(RoomMembership(
+            id=str(uuid.uuid4()),
+            room_id=invite.room_id,
+            account_id=account.id,
+            role="member",
+            joined_at=datetime.utcnow(),
+        ))
+        await db.commit()
+
+    room = await db.get(Room, invite.room_id)
+    return {
+        "room_id": invite.room_id,
+        "room_name": room.name if room else invite.room_id,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Document REST endpoints
 # ---------------------------------------------------------------------------
+
+async def _require_member(room_id: str, account: AuthAccount, db: AsyncSession) -> None:
+    result = await db.execute(
+        select(RoomMembership).where(
+            RoomMembership.room_id == room_id,
+            RoomMembership.account_id == account.id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
 
 @app.post("/rooms/{room_id}/documents", response_model=DocumentOut)
 async def upload_document(
     room_id: str,
     file: UploadFile = File(...),
     user_id: str = Query(...),
+    account: AuthAccount = Depends(get_current_account),
+    db: AsyncSession = Depends(get_session),
 ) -> dict:
+    await _require_member(room_id, account, db)
     pdf_bytes = await file.read()
     reader = PdfReader(io.BytesIO(pdf_bytes))
     full_text = "\n\n".join(
@@ -74,17 +340,16 @@ async def upload_document(
 
     chunks = rag_service.split_text(full_text)
 
-    async with AsyncSessionLocal() as db:
-        doc = Document(
-            id=str(uuid.uuid4()),
-            room_id=room_id,
-            filename=file.filename or "document.pdf",
-            uploaded_by=user_id,
-            chunk_count=len(chunks),
-            uploaded_at=datetime.utcnow(),
-        )
-        db.add(doc)
-        await db.commit()
+    doc = Document(
+        id=str(uuid.uuid4()),
+        room_id=room_id,
+        filename=file.filename or "document.pdf",
+        uploaded_by=user_id,
+        chunk_count=len(chunks),
+        uploaded_at=datetime.utcnow(),
+    )
+    db.add(doc)
+    await db.commit()
 
     await rag_service.index_document_chunks(chunks, room_id, doc.id)
 
@@ -95,14 +360,18 @@ async def upload_document(
 
 
 @app.get("/rooms/{room_id}/documents", response_model=list[DocumentOut])
-async def list_documents(room_id: str) -> list[dict]:
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Document)
-            .where(Document.room_id == room_id)
-            .order_by(Document.uploaded_at)
-        )
-        docs = result.scalars().all()
+async def list_documents(
+    room_id: str,
+    account: AuthAccount = Depends(get_current_account),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    await _require_member(room_id, account, db)
+    result = await db.execute(
+        select(Document)
+        .where(Document.room_id == room_id)
+        .order_by(Document.uploaded_at)
+    )
+    docs = result.scalars().all()
     return [DocumentOut.model_validate(d).model_dump(mode="json") for d in docs]
 
 
@@ -244,12 +513,19 @@ async def _process_queue_or_idle(room_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 @sio.event
-async def connect(sid: str, environ: dict) -> None:
-    pass
+async def connect(sid: str, environ: dict, auth: dict | None = None) -> None:
+    token = (auth or {}).get("token")
+    if not token:
+        raise ConnectionRefusedError("authentication required")
+    account = await get_current_account_from_token(token)
+    if not account:
+        raise ConnectionRefusedError("invalid or expired token")
+    _auth_cache[sid] = account.id
 
 
 @sio.event
 async def disconnect(sid: str) -> None:
+    _auth_cache.pop(sid, None)
     session = _sessions.pop(sid, None)
     if session:
         await sio.leave_room(sid, session["room_id"])
@@ -258,9 +534,25 @@ async def disconnect(sid: str) -> None:
 
 @sio.on(USER_JOIN)
 async def handle_user_join(sid: str, data: dict) -> None:
+    account_id = _auth_cache.get(sid)
+    if not account_id:
+        await sio.emit("error", {"message": "Not authenticated"}, to=sid)
+        return
+
     payload = UserJoinPayload(**data)
 
     async with AsyncSessionLocal() as db:
+        # Verify membership
+        membership = await db.execute(
+            select(RoomMembership).where(
+                RoomMembership.room_id == payload.room_id,
+                RoomMembership.account_id == account_id,
+            )
+        )
+        if not membership.scalar_one_or_none():
+            await sio.emit("error", {"message": "Not a member of this room"}, to=sid)
+            return
+
         room = await db.get(Room, payload.room_id)
         if not room:
             room = Room(id=payload.room_id, name=payload.room_id)
@@ -270,6 +562,7 @@ async def handle_user_join(sid: str, data: dict) -> None:
             id=str(uuid.uuid4()),
             room_id=payload.room_id,
             display_name=payload.display_name,
+            account_id=account_id,
         )
         db.add(user)
         await db.commit()

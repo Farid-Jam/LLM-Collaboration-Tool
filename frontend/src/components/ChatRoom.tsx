@@ -11,38 +11,38 @@ import { MergeReviewCard } from './MergeReviewCard'
 
 interface Props {
   roomId: string
+  roomName: string
   displayName: string
 }
 
-export function ChatRoom({ roomId, displayName }: Props) {
-  const { state, handleEvent } = useRoom()
+export function ChatRoom({ roomId, roomName, displayName }: Props) {
+  const { state, dispatch, handleEvent } = useRoom()
   const { emit } = useWebSocket(roomId, displayName, handleEvent)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    dispatch({ type: 'SET_ROOM', roomId, roomName, displayName })
+  }, [roomId, roomName, displayName, dispatch])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [state.messages])
 
-  const visibleMessages = state.messages.filter(
-    (m) => m.branch_id === state.activeBranchId,
-  )
-
+  const visibleMessages = (() => {
+    if (state.activeBranchId === null) {
+      return state.messages.filter(m => m.branch_id === null)
+    }
+    const branch = state.branches.find(b => b.id === state.activeBranchId)
+    const mainMessages = state.messages.filter(m => m.branch_id === null)
+    const forkIdx = branch ? mainMessages.findIndex(m => m.id === branch.forked_from_message_id) : -1
+    const mainUpToFork = forkIdx >= 0 ? mainMessages.slice(0, forkIdx + 1) : []
+    const branchMessages = state.messages.filter(m => m.branch_id === state.activeBranchId)
+    return [...mainUpToFork, ...branchMessages]
+  })()
   const isGenerating = state.llmStatus !== 'idle'
 
   function sendMessage(content: string) {
     emit('message:send', { room_id: roomId, branch_id: state.activeBranchId, content })
-  }
-
-  function approveQueue(targetRoomId: string, itemId: string) {
-    emit('queue:approve', { room_id: targetRoomId, queue_item_id: itemId })
-  }
-
-  function editQueue(targetRoomId: string, itemId: string, newContent: string) {
-    emit('queue:edit', { room_id: targetRoomId, queue_item_id: itemId, new_content: newContent })
-  }
-
-  function discardQueue(targetRoomId: string, itemId: string) {
-    emit('queue:discard', { room_id: targetRoomId, queue_item_id: itemId })
   }
 
   function forkBranch(messageId: string, branchName: string) {
@@ -61,20 +61,37 @@ export function ChatRoom({ roomId, displayName }: Props) {
     emit('merge:reject', { room_id: targetRoomId, branch_id: branchId })
   }
 
+  function approveQueue(targetRoomId: string, itemId: string) {
+    emit('queue:approve', { room_id: targetRoomId, queue_item_id: itemId })
+  }
+
+  function editQueue(targetRoomId: string, itemId: string, newContent: string) {
+    emit('queue:edit', { room_id: targetRoomId, queue_item_id: itemId, new_content: newContent })
+  }
+
+  function discardQueue(targetRoomId: string, itemId: string) {
+    emit('queue:discard', { room_id: targetRoomId, queue_item_id: itemId })
+  }
+
   return (
-    <div className="flex flex-col h-screen">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Header />
-      <div className="flex flex-1 overflow-hidden">
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <BranchSidebar roomId={roomId} onMerge={requestMerge} />
-        <main className="flex flex-col flex-1 overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-            {visibleMessages.map((m) => (
-              <MessageBubble
-                key={m.id}
-                message={m}
-                onFork={state.activeBranchId === null ? forkBranch : undefined}
-              />
-            ))}
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {visibleMessages.map((m, i) => {
+              const prev = visibleMessages[i - 1]
+              const prevSameUser = !!(prev && prev.user_id === m.user_id && prev.role === m.role)
+              return (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  prevSameUser={prevSameUser}
+                  onFork={state.activeBranchId === null ? forkBranch : undefined}
+                />
+              )
+            })}
             <div ref={bottomRef} />
           </div>
 

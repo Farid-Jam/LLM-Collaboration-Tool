@@ -15,7 +15,11 @@ export function useWebSocket(
   useEffect(() => {
     if (!roomId || !displayName) return
 
-    const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] })
+    const token = localStorage.getItem('jwt')
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      auth: { token },
+    })
     socketRef.current = socket
 
     const events = [

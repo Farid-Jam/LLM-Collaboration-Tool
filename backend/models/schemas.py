@@ -3,12 +3,77 @@ from typing import Literal
 from pydantic import BaseModel
 
 
-class RoomOut(BaseModel):
+# ---------------------------------------------------------------------------
+# Auth schemas
+# ---------------------------------------------------------------------------
+
+class RegisterRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AccountOut(BaseModel):
     id: str
-    name: str
+    email: str
+    username: str
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: AccountOut
+
+
+# ---------------------------------------------------------------------------
+# Room schemas
+# ---------------------------------------------------------------------------
+
+class RoomCreateRequest(BaseModel):
+    name: str
+
+
+class RoomOut(BaseModel):
+    id: str
+    name: str
+    created_by: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RoomWithMemberCount(RoomOut):
+    member_count: int
+
+
+# ---------------------------------------------------------------------------
+# Invite schemas
+# ---------------------------------------------------------------------------
+
+class InviteCreateResponse(BaseModel):
+    token: str
+    invite_url: str
+    expires_at: datetime
+
+
+class InvitePreviewResponse(BaseModel):
+    room_id: str
+    room_name: str
+    expires_at: datetime
+    is_expired: bool
+
+
+class InviteAcceptResponse(BaseModel):
+    room_id: str
+    room_name: str
 
 
 class UserOut(BaseModel):

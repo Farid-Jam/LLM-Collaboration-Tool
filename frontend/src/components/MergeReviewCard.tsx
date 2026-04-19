@@ -9,28 +9,53 @@ interface Props {
 
 export function MergeReviewCard({ review, roomId, onApprove, onReject }: Props) {
   return (
-    <div className="mx-4 mb-2 border border-purple-300 rounded-lg bg-purple-50 p-3 text-sm">
-      <p className="font-semibold text-purple-800 mb-1">
-        Merge proposal: <span className="font-mono">{review.branch_name}</span>
-      </p>
-      <p className="text-xs text-gray-500 mb-2">LLM-generated summary of the branch:</p>
-      <p className="text-gray-700 text-sm whitespace-pre-wrap mb-3 bg-white rounded p-2 border border-purple-200">
+    <div style={{
+      margin: '0 16px 12px', padding: '14px 16px',
+      borderRadius: 'var(--radius)',
+      border: '1px solid var(--accent-bg)',
+      background: 'var(--accent-bg)',
+      fontSize: 13,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ fontWeight: 600, color: 'var(--accent2)' }}>
+          Merge proposal:{' '}
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>{review.branch_name}</span>
+        </span>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>LLM-generated summary:</p>
+      <p style={{
+        background: 'var(--bg)', borderRadius: 8, padding: '10px 12px',
+        color: 'var(--text)', lineHeight: 1.55, marginBottom: 12,
+        border: '1px solid var(--border)', whiteSpace: 'pre-wrap',
+      }}>
         {review.summary}
       </p>
-      <div className="flex gap-2">
-        <button
-          onClick={() => onApprove(roomId, review.branch_id)}
-          className="px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
-        >
-          Merge
-        </button>
-        <button
-          onClick={() => onReject(roomId, review.branch_id)}
-          className="px-3 py-1 text-xs bg-white text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-        >
-          Reject
-        </button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Btn color="var(--accent)" onClick={() => onApprove(roomId, review.branch_id)}>Merge</Btn>
+        <Btn ghost onClick={() => onReject(roomId, review.branch_id)}>Reject</Btn>
       </div>
     </div>
+  )
+}
+
+function Btn({ color, ghost, children, onClick }: {
+  color?: string; ghost?: boolean; children: React.ReactNode; onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '5px 14px', borderRadius: 7,
+        border: ghost ? '1px solid var(--border2)' : 'none',
+        background: ghost ? 'transparent' : (color ?? 'var(--accent)'),
+        color: ghost ? 'var(--text2)' : 'white',
+        fontSize: 12, fontWeight: 500, cursor: 'pointer',
+        fontFamily: 'var(--font)', transition: 'opacity .15s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.opacity = '.8' }}
+      onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+    >
+      {children}
+    </button>
   )
 }

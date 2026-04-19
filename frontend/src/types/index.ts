@@ -52,6 +52,28 @@ export interface Document {
   uploaded_at: string
 }
 
+export interface AuthAccount {
+  id: string
+  email: string
+  username: string
+  created_at: string
+}
+
+export interface RoomWithMemberCount {
+  id: string
+  name: string
+  created_by: string | null
+  created_at: string
+  member_count: number
+}
+
+export interface InvitePreview {
+  room_id: string
+  room_name: string
+  expires_at: string
+  is_expired: boolean
+}
+
 export interface MergeReview {
   branch_id: string
   branch_name: string

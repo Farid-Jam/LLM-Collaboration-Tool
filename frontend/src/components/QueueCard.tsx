@@ -20,63 +20,80 @@ export function QueueCard({ item, roomId, onApprove, onEdit, onDiscard }: Props)
   }
 
   return (
-    <div className="mx-4 my-2 p-4 rounded-lg border border-yellow-300 bg-yellow-50 text-sm shadow-sm">
-      <p className="text-xs font-semibold text-yellow-700 uppercase tracking-wide mb-2">
-        Queued prompt — first action wins
-      </p>
+    <div style={{
+      margin: '0 16px 12px', padding: '14px 16px',
+      borderRadius: 'var(--radius)',
+      border: '1px solid oklch(78% 0.18 70 / 40%)',
+      background: 'oklch(14% 0.04 70)',
+      fontSize: 13,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: '.1em',
+          textTransform: 'uppercase', color: 'oklch(78% 0.18 70)',
+        }}>
+          Queued prompt — first action wins
+        </span>
+      </div>
 
       {editing ? (
         <textarea
-          className="w-full resize-none rounded border border-yellow-400 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-yellow-400 mb-3"
-          rows={3}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={e => setDraft(e.target.value)}
+          rows={3}
           autoFocus
+          style={{
+            width: '100%', resize: 'none', borderRadius: 8,
+            border: '1px solid oklch(78% 0.18 70 / 50%)',
+            background: 'var(--bg2)', color: 'var(--text)',
+            padding: '8px 10px', fontSize: 13, outline: 'none',
+            fontFamily: 'var(--font)', marginBottom: 10,
+          }}
         />
       ) : (
-        <p className="text-gray-800 mb-3 whitespace-pre-wrap">{item.content}</p>
+        <p style={{ color: 'var(--text)', marginBottom: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+          {item.content}
+        </p>
       )}
 
-      <div className="flex gap-2">
+      <div style={{ display: 'flex', gap: 8 }}>
         {editing ? (
           <>
-            <button
-              className="px-3 py-1 rounded bg-green-500 text-white text-xs hover:bg-green-600"
-              onClick={submitEdit}
-              disabled={!draft.trim()}
-            >
-              Send edited
-            </button>
-            <button
-              className="px-3 py-1 rounded bg-gray-300 text-gray-700 text-xs hover:bg-gray-400"
-              onClick={() => { setEditing(false); setDraft(item.content) }}
-            >
-              Cancel
-            </button>
+            <Btn color="oklch(65% 0.20 145)" onClick={submitEdit} disabled={!draft.trim()}>Send edited</Btn>
+            <Btn ghost onClick={() => { setEditing(false); setDraft(item.content) }}>Cancel</Btn>
           </>
         ) : (
           <>
-            <button
-              className="px-3 py-1 rounded bg-green-500 text-white text-xs hover:bg-green-600"
-              onClick={() => onApprove(roomId, item.id)}
-            >
-              Send
-            </button>
-            <button
-              className="px-3 py-1 rounded bg-yellow-500 text-white text-xs hover:bg-yellow-600"
-              onClick={() => setEditing(true)}
-            >
-              Edit
-            </button>
-            <button
-              className="px-3 py-1 rounded bg-red-500 text-white text-xs hover:bg-red-600"
-              onClick={() => onDiscard(roomId, item.id)}
-            >
-              Discard
-            </button>
+            <Btn color="oklch(65% 0.20 145)" onClick={() => onApprove(roomId, item.id)}>Send</Btn>
+            <Btn color="oklch(70% 0.18 70)" onClick={() => setEditing(true)}>Edit</Btn>
+            <Btn color="oklch(60% 0.20 22)" onClick={() => onDiscard(roomId, item.id)}>Discard</Btn>
           </>
         )}
       </div>
     </div>
+  )
+}
+
+function Btn({ color, ghost, children, onClick, disabled }: {
+  color?: string; ghost?: boolean; children: React.ReactNode
+  onClick: () => void; disabled?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: '5px 14px', borderRadius: 7,
+        border: ghost ? '1px solid var(--border2)' : 'none',
+        background: ghost ? 'transparent' : (color ?? 'var(--accent)'),
+        color: ghost ? 'var(--text2)' : 'white',
+        fontSize: 12, fontWeight: 500, cursor: disabled ? 'default' : 'pointer',
+        fontFamily: 'var(--font)', opacity: disabled ? 0.5 : 1, transition: 'opacity .15s',
+      }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.opacity = '.75' }}
+      onMouseLeave={e => { e.currentTarget.style.opacity = disabled ? '0.5' : '1' }}
+    >
+      {children}
+    </button>
   )
 }

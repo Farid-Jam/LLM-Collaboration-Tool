@@ -9,6 +9,7 @@ import type { Message, Branch, QueueItem, User, LLMStatus, Document, MergeReview
 
 interface RoomState {
   roomId: string | null
+  roomName: string | null
   userId: string | null
   displayName: string | null
   users: User[]
@@ -22,7 +23,7 @@ interface RoomState {
 }
 
 type Action =
-  | { type: 'SET_ROOM'; roomId: string; displayName: string }
+  | { type: 'SET_ROOM'; roomId: string; roomName: string; displayName: string }
   | { type: 'SET_SELF'; userId: string; displayName: string }
   | { type: 'LOAD_USERS'; users: User[] }
   | { type: 'USER_JOINED'; user: User }
@@ -45,6 +46,7 @@ type Action =
 
 const initialState: RoomState = {
   roomId: null,
+  roomName: null,
   userId: null,
   displayName: null,
   users: [],
@@ -60,7 +62,7 @@ const initialState: RoomState = {
 function reducer(state: RoomState, action: Action): RoomState {
   switch (action.type) {
     case 'SET_ROOM':
-      return { ...initialState, roomId: action.roomId, displayName: action.displayName }
+      return { ...initialState, roomId: action.roomId, roomName: action.roomName, displayName: action.displayName }
     case 'SET_SELF':
       // New session — clear stale users from previous connection
       return { ...state, userId: action.userId, displayName: action.displayName, users: [] }

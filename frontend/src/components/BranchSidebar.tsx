@@ -10,42 +10,61 @@ export function BranchSidebar({ roomId, onMerge }: Props) {
   const { state, dispatch } = useRoom()
 
   return (
-    <aside className="w-48 border-r border-gray-200 bg-gray-50 p-3 flex flex-col overflow-y-auto">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Branches</p>
-      <button
-        className={`text-left text-sm px-2 py-1 rounded ${
-          state.activeBranchId === null
-            ? 'bg-blue-100 text-blue-700 font-medium'
-            : 'text-gray-700 hover:bg-gray-100'
-        }`}
-        onClick={() => dispatch({ type: 'SET_ACTIVE_BRANCH', branchId: null })}
-      >
-        main
-      </button>
-      {state.branches.map((b) => (
-        <div key={b.id} className="flex items-center gap-1 mt-0.5">
-          <button
-            className={`flex-1 text-left text-sm px-2 py-1 rounded truncate ${
-              state.activeBranchId === b.id
-                ? 'bg-purple-100 text-purple-700 font-medium'
-                : 'text-gray-700 hover:bg-gray-100'
-            }`}
-            onClick={() => dispatch({ type: 'SET_ACTIVE_BRANCH', branchId: b.id })}
-            title={b.name}
-          >
-            {b.name}
-          </button>
-          <button
-            onClick={() => onMerge(b.id)}
-            className="shrink-0 text-xs text-purple-500 hover:text-purple-700 px-1"
-            title="Merge into main"
-          >
-            ↩
-          </button>
-        </div>
-      ))}
+    <aside style={{
+      width: 188, borderRight: '1px solid var(--border)',
+      background: 'var(--bg2)', display: 'flex', flexDirection: 'column',
+      overflow: 'hidden', flexShrink: 0,
+    }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '14px 10px' }}>
+        <p style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: '.1em',
+          textTransform: 'uppercase', color: 'var(--text3)',
+          padding: '0 4px', marginBottom: 8,
+        }}>Branches</p>
 
-      <DocumentPanel roomId={roomId} />
+        <button
+          onClick={() => dispatch({ type: 'SET_ACTIVE_BRANCH', branchId: null })}
+          style={{
+            display: 'block', width: '100%', textAlign: 'left',
+            padding: '6px 8px', borderRadius: 8, border: 'none',
+            background: state.activeBranchId === null ? 'var(--accent-bg)' : 'transparent',
+            color: state.activeBranchId === null ? 'var(--accent)' : 'var(--text2)',
+            fontFamily: 'var(--mono)', fontSize: 11, cursor: 'pointer',
+            fontWeight: state.activeBranchId === null ? 600 : 400,
+            transition: 'all .15s', marginBottom: 2,
+          }}
+        >◆ main</button>
+
+        {state.branches.map(b => (
+          <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 4, borderRadius: 8 }}>
+            <button
+              onClick={() => dispatch({ type: 'SET_ACTIVE_BRANCH', branchId: b.id })}
+              title={b.name}
+              style={{
+                flex: 1, textAlign: 'left', padding: '6px 8px', borderRadius: 8, border: 'none',
+                background: state.activeBranchId === b.id ? 'var(--accent-bg)' : 'transparent',
+                color: state.activeBranchId === b.id ? 'var(--accent)' : 'var(--text2)',
+                fontFamily: 'var(--mono)', fontSize: 11, cursor: 'pointer',
+                fontWeight: state.activeBranchId === b.id ? 500 : 400,
+                transition: 'all .15s',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}
+            >⎇ {b.name}</button>
+            <button
+              onClick={() => onMerge(b.id)}
+              className="merge-btn"
+              title="Merge into main"
+              style={{
+                padding: '4px 6px', borderRadius: 6, border: 'none',
+                background: 'transparent', color: 'var(--text3)',
+                cursor: 'pointer', fontSize: 13, transition: 'color .15s', flexShrink: 0,
+              }}
+            >↩</button>
+          </div>
+        ))}
+
+        <DocumentPanel roomId={roomId} />
+      </div>
     </aside>
   )
 }
