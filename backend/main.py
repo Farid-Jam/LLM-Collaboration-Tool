@@ -921,3 +921,7 @@ async def handle_merge_reject(sid: str, data: dict) -> None:
     branch_id = data["branch_id"]
     _pending_merges.pop(room_id, None)
     await sio.emit("merge:rejected", {"branch_id": branch_id}, room=room_id)
+
+if __name__ == "__main__":
+    import uvicorn, os
+    uvicorn.run(socket_app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
