@@ -65,7 +65,6 @@ function reducer(state: RoomState, action: Action): RoomState {
     case 'SET_ROOM':
       return { ...initialState, roomId: action.roomId, roomName: action.roomName, displayName: action.displayName }
     case 'SET_SELF':
-      // New session — clear stale users from previous connection
       return { ...state, userId: action.userId, displayName: action.displayName, users: [] }
     case 'LOAD_USERS':
       return { ...state, users: action.users }

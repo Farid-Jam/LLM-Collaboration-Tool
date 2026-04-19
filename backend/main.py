@@ -59,13 +59,8 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 
 socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
-# sid → {user_id, room_id, display_name}
 _sessions: dict[str, dict] = {}
-
-# room_id → {branch_id, summary} awaiting group merge approval
 _pending_merges: dict[str, dict] = {}
-
-# sid → account_id (populated on WebSocket connect, cleared on disconnect)
 _auth_cache: dict[str, str] = {}
 
 
@@ -78,10 +73,6 @@ async def on_startup() -> None:
 async def health() -> dict:
     return {"status": "ok"}
 
-
-# ---------------------------------------------------------------------------
-# Auth endpoints
-# ---------------------------------------------------------------------------
 
 @app.post("/auth/register", response_model=AccountOut, status_code=201)
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_session)) -> dict:
@@ -124,10 +115,6 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_session)) 
 async def me(account: AuthAccount = Depends(get_current_account)) -> dict:
     return AccountOut.model_validate(account).model_dump(mode="json")
 
-
-# ---------------------------------------------------------------------------
-# Room endpoints
-# ---------------------------------------------------------------------------
 
 @app.post("/rooms", response_model=RoomWithMemberCount, status_code=201)
 async def create_room(
@@ -222,10 +209,6 @@ async def delete_room(
     await db.commit()
 
 
-# ---------------------------------------------------------------------------
-# Invite endpoints
-# ---------------------------------------------------------------------------
-
 @app.post("/rooms/{room_id}/invites", response_model=InviteCreateResponse, status_code=201)
 async def create_invite(
     room_id: str,
@@ -292,7 +275,6 @@ async def accept_invite(
     if invite.expires_at < datetime.utcnow():
         raise HTTPException(status_code=410, detail="Invite has expired")
 
-    # Upsert membership — idempotent
     existing = await db.execute(
         select(RoomMembership).where(
             RoomMembership.room_id == invite.room_id,
@@ -315,10 +297,6 @@ async def accept_invite(
         "room_name": room.name if room else invite.room_id,
     }
 
-
-# ---------------------------------------------------------------------------
-# Document REST endpoints
-# ---------------------------------------------------------------------------
 
 async def _require_member(room_id: str, account: AuthAccount, db: AsyncSession) -> None:
     result = await db.execute(
@@ -383,10 +361,6 @@ async def list_documents(
     return [DocumentOut.model_validate(d).model_dump(mode="json") for d in docs]
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
 async def _count_pending(room_id: str) -> int:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -427,14 +401,12 @@ _IMAGE_REQUEST_RE = re.compile(
 
 
 def _sync_generate_image(prompt: str):
-    """Synchronous HuggingFace call — runs in a thread pool executor."""
     from huggingface_hub import InferenceClient
     client = InferenceClient(token=settings.hf_token)
     return client.text_to_image(prompt, model="stabilityai/stable-diffusion-xl-base-1.0")
 
 
 async def _generate_and_save_image(description: str) -> str:
-    """Generate one image, save it, return the markdown image snippet."""
     loop = asyncio.get_event_loop()
     image = await asyncio.wait_for(
         loop.run_in_executor(None, _sync_generate_image, description),
@@ -453,7 +425,6 @@ async def _run_pipeline(
     content: str,
     user_id: str,
 ) -> None:
-    """RAG retrieval + LLM streaming. Room must already be marked busy."""
     await sio.emit(LLM_STATUS, {"status": "generating"}, room=room_id)
 
     history = await _get_recent_history(room_id, branch_id)
@@ -485,11 +456,9 @@ async def _run_pipeline(
 
     await sio.emit("message:complete", {"message_id": asst_msg.id}, room=room_id)
 
-    # If user explicitly requested an image but LLM didn't include a tag, inject one
     if not _IMAGE_TAG_RE.search(full_content) and _IMAGE_REQUEST_RE.search(content):
         full_content = full_content.rstrip() + f"\n\n[GENERATE_IMAGE: {content}]"
 
-    # Replace any [GENERATE_IMAGE: ...] tags with actual images
     tags = _IMAGE_TAG_RE.findall(full_content)
     if tags:
         results = await asyncio.gather(
@@ -564,10 +533,6 @@ async def _process_queue_or_idle(room_id: str) -> None:
         await sio.emit(LLM_STATUS, {"status": "idle"}, room=room_id)
 
 
-# ---------------------------------------------------------------------------
-# Socket.IO event handlers
-# ---------------------------------------------------------------------------
-
 @sio.event
 async def connect(sid: str, environ: dict, auth: dict | None = None) -> None:
     token = (auth or {}).get("token")
@@ -598,7 +563,6 @@ async def handle_user_join(sid: str, data: dict) -> None:
     payload = UserJoinPayload(**data)
 
     async with AsyncSessionLocal() as db:
-        # Verify membership
         membership = await db.execute(
             select(RoomMembership).where(
                 RoomMembership.room_id == payload.room_id,
@@ -795,10 +759,6 @@ async def handle_queue_discard(sid: str, data: dict) -> None:
     await sio.emit("queue:resolved", {"queue_item_id": item.id, "action": "discarded"}, room=room_id)
     asyncio.create_task(_process_queue_or_idle(room_id))
 
-
-# ---------------------------------------------------------------------------
-# Branch / merge handlers
-# ---------------------------------------------------------------------------
 
 @sio.on("branch:create")
 async def handle_branch_create(sid: str, data: dict) -> None:

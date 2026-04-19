@@ -35,8 +35,6 @@ def create_access_token(account_id: str) -> str:
 
 
 async def get_current_account_from_token(token: str):
-    """Standalone coroutine for WebSocket use (no HTTP context)."""
-    # Import here to avoid circular dependency at module load time
     from models.database import AuthAccount
 
     try:
@@ -55,7 +53,6 @@ async def get_current_account(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     db: AsyncSession = Depends(get_session),
 ):
-    """FastAPI dependency for protected REST endpoints."""
     from models.database import AuthAccount
 
     credentials_exception = HTTPException(

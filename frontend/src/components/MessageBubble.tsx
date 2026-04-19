@@ -188,7 +188,6 @@ function ThrottledMarkdown({ content, streaming }: { content: string; streaming:
   const renderRef = useRef(content)
   const counterRef = useRef(0)
 
-  // Strip [GENERATE_IMAGE: ...] tags (including partial ones mid-stream) so users never see them
   const displayContent = content.replace(GENERATE_TAG_RE, '').trimEnd()
 
   if (!streaming) {

@@ -3,13 +3,36 @@ from __future__ import annotations
 import asyncio
 import re
 
+import numpy as np
+from huggingface_hub import InferenceClient
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.embeddings import Embeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from core.config import settings
+
 _CHROMA_DIR = "./chroma_data"
-_embeddings: HuggingFaceEmbeddings | None = None
+_embeddings: "HFApiEmbeddings | None" = None
+
+
+class HFApiEmbeddings(Embeddings):
+    def __init__(self, token: str, model: str) -> None:
+        self._client = InferenceClient(token=token)
+        self._model = model
+
+    def _embed(self, text: str) -> list[float]:
+        result = self._client.feature_extraction(text, model=self._model)
+        arr = np.array(result)
+        if arr.ndim == 2:
+            arr = arr.mean(axis=0)
+        return arr.tolist()
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed(t) for t in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed(text)
 
 PROMPT = ChatPromptTemplate.from_messages([
     (
@@ -51,10 +74,10 @@ SPLITTER = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
 _ROLE_MAP = {"system": "system", "human": "user", "ai": "assistant"}
 
 
-def _get_embeddings() -> HuggingFaceEmbeddings:
+def _get_embeddings() -> HFApiEmbeddings:
     global _embeddings
     if _embeddings is None:
-        _embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+        _embeddings = HFApiEmbeddings(token=settings.hf_token, model="BAAI/bge-small-en-v1.5")
     return _embeddings
 
 

@@ -171,11 +171,10 @@ async def init_db() -> None:
     from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Add image_url column to existing databases that predate this field
         try:
             await conn.execute(text("ALTER TABLE messages ADD COLUMN image_url TEXT"))
         except Exception:
-            pass  # Column already exists
+            pass
 
 
 async def get_session() -> AsyncSession:
