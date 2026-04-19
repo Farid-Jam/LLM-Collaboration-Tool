@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    environment:
+      - VITE_SOCKET_URL=http://localhost:8000
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - chromadb
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./collaborate.db
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8000
+      - VLLM_BASE_URL=http://model:8001
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8002:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+
+  # model:
+  #   image: vllm/vllm-openai:latest
+  #   ports:
+  #     - "8001:8000"
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   command: ["--model", "mistralai/Mistral-7B-Instruct-v0.3"]
+
+volumes:
+  chroma_data:

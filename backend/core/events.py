@@ -1,0 +1,25 @@
+"""WebSocket event name constants."""
+
+# Client → Server
+USER_JOIN = "user:join"
+MESSAGE_SEND = "message:send"
+QUEUE_APPROVE = "queue:approve"
+QUEUE_EDIT = "queue:edit"
+QUEUE_DISCARD = "queue:discard"
+BRANCH_CREATE = "branch:create"
+BRANCH_MERGE = "branch:merge"
+MERGE_APPROVE = "merge:approve"
+MERGE_REJECT = "merge:reject"
+
+# Server → Client
+USER_JOINED = "user:joined"
+USER_LEFT = "user:left"
+MESSAGE_NEW = "message:new"
+MESSAGE_STREAM = "message:stream"
+MESSAGE_COMPLETE = "message:complete"
+QUEUE_ADDED = "queue:added"
+QUEUE_REVIEW = "queue:review"
+QUEUE_RESOLVED = "queue:resolved"
+BRANCH_CREATED = "branch:created"
+BRANCH_MERGED = "branch:merged"
+LLM_STATUS = "llm:status"

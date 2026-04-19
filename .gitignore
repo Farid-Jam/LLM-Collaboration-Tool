@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.db
+
+# Model weights — never commit
+*.bin
+*.safetensors
+*.pt
+*.ckpt
+fine-tuning/data/*.jsonl
+
+# Node
+node_modules/
+dist/
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# Chroma
+chroma/
