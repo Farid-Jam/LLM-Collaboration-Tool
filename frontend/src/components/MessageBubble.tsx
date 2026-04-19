@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Message } from '../types'
 import { useRoom } from '../context/RoomContext'
 import { Avatar } from './Avatar'
+import { MermaidDiagram } from './MermaidDiagram'
 
 interface Props {
   message: Message
@@ -84,8 +85,7 @@ export function MessageBubble({ message, prevSameUser = false, onFork }: Props) 
           {message.content ? (
             isAsst ? (
               <div className="asst-prose">
-                <ReactMarkdown>{message.content}</ReactMarkdown>
-                {message.streaming && <StreamingCursor />}
+                <ThrottledMarkdown content={message.content} streaming={!!message.streaming} />
               </div>
             ) : (
               <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -153,6 +153,60 @@ export function MessageBubble({ message, prevSameUser = false, onFork }: Props) 
         </div>
       )}
     </div>
+  )
+}
+
+const imgComponent = {
+  img: ({ src, alt }: { src?: string; alt?: string }) => (
+    <img
+      src={src} alt={alt}
+      style={{ display: 'block', maxWidth: '100%', borderRadius: 10, margin: '10px 0' }}
+    />
+  ),
+}
+
+function makeMdComponents(streaming: boolean) {
+  return {
+    ...imgComponent,
+    pre({ children }: { children?: React.ReactNode }) {
+      const child = children as React.ReactElement<{ className?: string }>
+      if (child?.props?.className === 'language-mermaid') return <>{children}</>
+      return <pre>{children}</pre>
+    },
+    code({ className, children, ...rest }: React.ComponentPropsWithoutRef<'code'>) {
+      if (className === 'language-mermaid') {
+        return <MermaidDiagram code={String(children).trim()} streaming={streaming} />
+      }
+      return <code className={className} {...rest}>{children}</code>
+    },
+  }
+}
+
+const GENERATE_TAG_RE = /\[GENERATE_IMAGE:[\s\S]*?\]|\[GENERATE_IMAGE:[\s\S]*/g
+
+function ThrottledMarkdown({ content, streaming }: { content: string; streaming: boolean }) {
+  const renderRef = useRef(content)
+  const counterRef = useRef(0)
+
+  // Strip [GENERATE_IMAGE: ...] tags (including partial ones mid-stream) so users never see them
+  const displayContent = content.replace(GENERATE_TAG_RE, '').trimEnd()
+
+  if (!streaming) {
+    renderRef.current = displayContent
+  } else {
+    counterRef.current += 1
+    if (counterRef.current % 8 === 0) {
+      renderRef.current = displayContent
+    }
+  }
+
+  const components = useMemo(() => makeMdComponents(streaming), [streaming])
+
+  return (
+    <>
+      <ReactMarkdown components={components}>{renderRef.current}</ReactMarkdown>
+      {streaming && <StreamingCursor />}
+    </>
   )
 }
 

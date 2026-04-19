@@ -110,6 +110,7 @@ class Message(Base):
     user_id: str = Column(String, ForeignKey("users.id"), nullable=False)
     role: str = Column(SAEnum("user", "assistant", name="message_role"), nullable=False)
     content: str = Column(Text, nullable=False)
+    image_url: str | None = Column(Text, nullable=True)
     timestamp: datetime = Column(DateTime, default=datetime.utcnow)
     parent_message_id: str | None = Column(String, ForeignKey("messages.id"), nullable=True)
 
@@ -167,8 +168,14 @@ class Document(Base):
 
 
 async def init_db() -> None:
+    from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Add image_url column to existing databases that predate this field
+        try:
+            await conn.execute(text("ALTER TABLE messages ADD COLUMN image_url TEXT"))
+        except Exception:
+            pass  # Column already exists
 
 
 async def get_session() -> AsyncSession:

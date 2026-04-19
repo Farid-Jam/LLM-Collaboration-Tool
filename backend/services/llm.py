@@ -27,13 +27,16 @@ class HFInferenceLLM:
         response = await client.chat_completion(
             messages=messages,
             stream=True,
-            max_tokens=512,
+            max_tokens=300,
             temperature=0.7,
+            stop=["<|eot_id|>", "<|end_of_text|>"],
         )
         async for chunk in response:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                yield delta
+            choice = chunk.choices[0]
+            if choice.delta.content:
+                yield choice.delta.content
+            if choice.finish_reason is not None:
+                break
 
 
 llm_service = HFInferenceLLM()

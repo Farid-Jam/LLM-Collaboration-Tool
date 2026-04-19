@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+collaborate.db
+chroma_data/
+static/images/
+tests/
+*.dist-info/

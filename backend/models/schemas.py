@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -90,12 +90,19 @@ class MessageOut(BaseModel):
     room_id: str
     branch_id: str | None
     user_id: str
-    role: Literal["user", "assistant"]
+    role: str
     content: str
+    image_url: str | None = None
     timestamp: datetime
-    parent_message_id: str | None
+    parent_message_id: str | None = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def derive_image_role(self) -> "MessageOut":
+        if self.image_url is not None:
+            self.role = "image"
+        return self
 
 
 class BranchOut(BaseModel):

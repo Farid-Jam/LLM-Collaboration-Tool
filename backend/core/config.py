@@ -7,10 +7,11 @@ class Settings(BaseSettings):
     vllm_base_url: str = "http://localhost:8001"
     chromadb_host: str = "localhost"
     chromadb_port: int = 8002
-    model_name: str = "Qwen/Qwen2.5-7B-Instruct"
+    model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct"
     hf_token: str = ""
     secret_key: str = "change-me-in-production"
     frontend_url: str = "http://localhost:5173"
+    backend_url: str = "http://localhost:8080"
 
     class Config:
         env_file = ".env"

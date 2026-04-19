@@ -41,6 +41,7 @@ export function useWebSocket(
       'room:branches',
       'llm:status',
       'document:uploaded',
+      'message:update',
     ]
 
     events.forEach((evt) => {

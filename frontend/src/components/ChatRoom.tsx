@@ -18,15 +18,21 @@ interface Props {
 export function ChatRoom({ roomId, roomName, displayName }: Props) {
   const { state, dispatch, handleEvent } = useRoom()
   const { emit } = useWebSocket(roomId, displayName, handleEvent)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const isStreaming = state.messages.some(m => m.streaming)
 
   useEffect(() => {
     dispatch({ type: 'SET_ROOM', roomId, roomName, displayName })
   }, [roomId, roomName, displayName, dispatch])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [state.messages])
+    const el = scrollRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (nearBottom || isStreaming) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [state.messages, isStreaming])
 
   const visibleMessages = (() => {
     if (state.activeBranchId === null) {
@@ -79,7 +85,7 @@ export function ChatRoom({ roomId, roomName, displayName }: Props) {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <BranchSidebar roomId={roomId} onMerge={requestMerge} />
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {visibleMessages.map((m, i) => {
               const prev = visibleMessages[i - 1]
               const prevSameUser = !!(prev && prev.user_id === m.user_id && prev.role === m.role)
@@ -92,7 +98,7 @@ export function ChatRoom({ roomId, roomName, displayName }: Props) {
                 />
               )
             })}
-            <div ref={bottomRef} />
+            <div style={{ height: 1 }} />
           </div>
 
           {state.mergeReview && (

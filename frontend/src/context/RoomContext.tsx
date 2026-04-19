@@ -43,6 +43,7 @@ type Action =
   | { type: 'BRANCH_MERGED'; branchId: string }
   | { type: 'MERGE_REVIEW'; review: MergeReview }
   | { type: 'MERGE_RESOLVED' }
+  | { type: 'MESSAGE_UPDATE'; messageId: string; content: string }
 
 const initialState: RoomState = {
   roomId: null,
@@ -120,6 +121,13 @@ function reducer(state: RoomState, action: Action): RoomState {
       return { ...state, mergeReview: action.review }
     case 'MERGE_RESOLVED':
       return { ...state, mergeReview: null }
+    case 'MESSAGE_UPDATE':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.messageId ? { ...m, content: action.content } : m
+        ),
+      }
     default:
       return state
   }
@@ -178,6 +186,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break
       case 'message:complete':
         dispatch({ type: 'MESSAGE_COMPLETE', messageId: d.message_id as string })
+        break
+      case 'message:update':
+        dispatch({ type: 'MESSAGE_UPDATE', messageId: d.message_id as string, content: d.content as string })
         break
       case 'queue:review':
         dispatch({ type: 'QUEUE_REVIEW', item: d as unknown as QueueItem })

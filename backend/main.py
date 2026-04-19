@@ -1,15 +1,21 @@
 import asyncio
 import io
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import socketio
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pypdf import PdfReader
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+
+_IMAGES_DIR = Path(__file__).parent / "static" / "images"
+_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 from core.auth import (
     create_access_token, get_current_account, get_current_account_from_token,
@@ -48,6 +54,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
@@ -410,6 +418,35 @@ async def _get_recent_history(
     return [{"role": m.role, "content": m.content} for m in msgs]
 
 
+_IMAGE_TAG_RE = re.compile(r'\[GENERATE_IMAGE:\s*(.*?)\]', re.DOTALL)
+_IMAGE_REQUEST_RE = re.compile(
+    r'\b(generate|create|make|draw|show|render|produce|paint|design|visualize|imagine)\b.{0,60}'
+    r'\b(image|picture|photo|illustration|concept art|mood board|logo|mockup|sketch)\b',
+    re.IGNORECASE,
+)
+
+
+def _sync_generate_image(prompt: str):
+    """Synchronous HuggingFace call — runs in a thread pool executor."""
+    from huggingface_hub import InferenceClient
+    client = InferenceClient(token=settings.hf_token)
+    return client.text_to_image(prompt, model="stabilityai/stable-diffusion-xl-base-1.0")
+
+
+async def _generate_and_save_image(description: str) -> str:
+    """Generate one image, save it, return the markdown image snippet."""
+    loop = asyncio.get_event_loop()
+    image = await asyncio.wait_for(
+        loop.run_in_executor(None, _sync_generate_image, description),
+        timeout=90,
+    )
+    image_id = str(uuid.uuid4())
+    image_path = _IMAGES_DIR / f"{image_id}.png"
+    image.save(image_path)
+    url = f"{settings.backend_url}/static/images/{image_id}.png"
+    return f"![{description}]({url})"
+
+
 async def _run_pipeline(
     room_id: str,
     branch_id: str | None,
@@ -447,6 +484,25 @@ async def _run_pipeline(
         await sio.emit("message:stream", {"message_id": asst_msg.id, "token": token}, room=room_id)
 
     await sio.emit("message:complete", {"message_id": asst_msg.id}, room=room_id)
+
+    # If user explicitly requested an image but LLM didn't include a tag, inject one
+    if not _IMAGE_TAG_RE.search(full_content) and _IMAGE_REQUEST_RE.search(content):
+        full_content = full_content.rstrip() + f"\n\n[GENERATE_IMAGE: {content}]"
+
+    # Replace any [GENERATE_IMAGE: ...] tags with actual images
+    tags = _IMAGE_TAG_RE.findall(full_content)
+    if tags:
+        results = await asyncio.gather(
+            *[_generate_and_save_image(desc.strip()) for desc in tags],
+            return_exceptions=True,
+        )
+        for tag_text, result in zip(tags, results):
+            if not isinstance(result, str):
+                print(f"[image] generation failed: {result!r}")
+            replacement = result if isinstance(result, str) else f"*(image generation failed)*"
+            full_content = full_content.replace(f"[GENERATE_IMAGE: {tag_text}]", replacement, 1)
+
+        await sio.emit("message:update", {"message_id": asst_msg.id, "content": full_content}, room=room_id)
 
     async with AsyncSessionLocal() as db:
         stored = await db.get(Message, asst_msg.id)

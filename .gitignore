@@ -22,5 +22,12 @@ dist/
 # macOS
 .DS_Store
 
+# Logs
+*.log
+
 # Chroma
 chroma/
+chroma_data/
+
+# Env files
+.env*
