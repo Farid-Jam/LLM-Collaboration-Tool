@@ -3,7 +3,7 @@
   <a href="https://llm-collaboration-tool.vercel.app/dashboard">
     <img src="images/chatroom2.png" alt="Image of application chatroom" width="800">
   </a>
-  <p><i>Click to view the project yourself</i></p>
+  <p><i>Click to try the project yourself</i></p>
 
   [![React](https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
     [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
