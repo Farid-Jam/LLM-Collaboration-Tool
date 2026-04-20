@@ -1,7 +1,7 @@
 # Collaborate
 <div align="center">
   <a href="https://llm-collaboration-tool.vercel.app/dashboard">
-    <img src="images/chatroom.png" alt="Image of application chatroom" width="800">
+    <img src="images/chatroom2.png" alt="Image of application chatroom" width="800">
   </a>
   <p><i>Click to view the project yourself</i></p>
 
