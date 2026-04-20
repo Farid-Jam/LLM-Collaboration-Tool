@@ -20,7 +20,7 @@
     [![Vercel](https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/)
 </div>
 
-A multi-user AI-powered planning chatroom where teams brainstorm together with a shared LLM. Upload documents, fork conversation branches, and let the AI generate Mermaid diagrams and concept images — all in real time. View our presentation [here](https://youtu.be/93UVj6oZg1U?si=pSYZix1IBkPIgjsj)
+A multi-user AI-powered planning chatroom where teams brainstorm together with a shared LLM. Upload documents, fork conversation branches, and let the AI generate Mermaid diagrams and concept images — all in real time. View our presentation [here](https://youtu.be/93UVj6oZg1U?si=pSYZix1IBkPIgjsj).
 
 ## Features
 
