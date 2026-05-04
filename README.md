@@ -25,7 +25,6 @@ A multi-user AI-powered planning chatroom where teams brainstorm together with a
 ## Features
 
 - **Shared AI assistant** — one LLM responds to the whole room, streamed token-by-token to every connected user
-- **Prompt queue** — when the LLM is busy, messages queue up; any team member can approve, edit, or discard before it sends
 - **Git-style branching** — fork a private conversation from any message, explore an idea, then merge a summary back into main
 - **RAG on your documents** — upload PDFs and the assistant answers using content from them (LangChain + ChromaDB)
 - **Mermaid diagrams** — ask for a flowchart, sequence diagram, ER diagram, or class diagram and it renders inline
